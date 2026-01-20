@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "PrePromptSubmit": [
+      {
+        "matcher": {},
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/memory/src/hooks/PrePromptSubmit.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": {},
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/memory/src/hooks/PostToolUse.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": {},
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/memory/src/hooks/Stop.py"
+          }
+        ]
+      }
+    ]
+  }
+}
