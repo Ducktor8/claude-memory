@@ -22,7 +22,7 @@ Claude Code starts fresh every session. This means you end up explaining the sam
 
 ```bash
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/claude-memory.git
+git clone https://github.com/Ducktor8/claude-memory.git
 cd claude-memory
 
 # Run the installer
