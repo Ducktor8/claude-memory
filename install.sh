@@ -99,24 +99,22 @@ else:
 if 'hooks' not in settings:
     settings['hooks'] = {}
 
-# Define our hooks (new format with matcher)
+# Define our hooks (new format: PostToolUse uses matcher, others don't)
 our_hooks = {
-    "PrePromptSubmit": [{
-        "matcher": {},
+    "UserPromptSubmit": [{
         "hooks": [{
             "type": "command",
             "command": f"python3 {memory_dir}/src/hooks/PrePromptSubmit.py"
         }]
     }],
     "PostToolUse": [{
-        "matcher": {},
+        "matcher": "*",
         "hooks": [{
             "type": "command",
             "command": f"python3 {memory_dir}/src/hooks/PostToolUse.py"
         }]
     }],
     "Stop": [{
-        "matcher": {},
         "hooks": [{
             "type": "command",
             "command": f"python3 {memory_dir}/src/hooks/Stop.py"
