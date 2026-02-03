@@ -19,8 +19,24 @@ Il sistema usa tre hook che si attivano automaticamente:
 | Hook | Quando | Cosa fa |
 |------|--------|---------|
 | `UserPromptSubmit` | Prima che il prompt arrivi a Claude | Inietta memorie rilevanti nel contesto |
-| `PostToolUse` | Dopo ogni uso di tool | Traccia le modifiche ai file |
-| `Stop` | Fine del turno di Claude | Estrae e salva nuove memorie |
+| `PostToolUse` | Dopo ogni uso di tool | Traccia le modifiche ai file per auto-save |
+| `Stop` | Fine del turno di Claude | Estrae e salva automaticamente nuove memorie |
+
+### Auto-Save
+
+Il sistema salva automaticamente memorie quando:
+- File di configurazione vengono modificati (package.json, config.ini, etc.)
+- Pacchetti vengono installati (npm, pip, etc.)
+- Operazioni git significative vengono eseguite
+- Pattern di codice vengono creati
+- Errori vengono risolti
+
+### Deduplicazione
+
+Le memorie duplicate vengono rilevate tramite:
+- Hash del contenuto normalizzato
+- Ricerca FTS per similarità semantica
+- Soglia di similarità del 70%
 
 ### Contesti disponibili
 
@@ -42,6 +58,10 @@ Il sistema usa tre hook che si attivano automaticamente:
 /context-manager:forget   - Rimuovi una memoria
 /context-manager:switch   - Cambia contesto manualmente
 /context-manager:create   - Crea nuovo contesto
+/context-manager:map      - Gestisci mapping directory -> contesto
+/context-manager:export   - Esporta memorie in JSON
+/context-manager:import   - Importa memorie da JSON
+/context-manager:errors   - Mostra log errori
 ```
 
 ## Tipi di memoria
@@ -64,36 +84,48 @@ Il sistema usa tre hook che si attivano automaticamente:
 │       └── commands/      # Sub-comandi
 └── src/
     ├── db/                # Schema database
+    │   └── schema.sql
     ├── hooks/             # Hook scripts Python
     │   ├── PrePromptSubmit.py
     │   ├── PostToolUse.py
     │   └── Stop.py
     └── lib/               # Librerie Python
-        ├── db.py
-        ├── context.py
-        └── memory.py
+        ├── db.py          # Connessione database
+        ├── context.py     # Gestione contesti
+        ├── memory.py      # CRUD memorie
+        ├── extractor.py   # Auto-estrazione memorie
+        ├── migrations.py  # Migrazioni schema DB
+        └── backup.py      # Export/Import
 ```
 
 ## Sviluppo
 
+### Eseguire i test
+
+```bash
+pip install pytest
+pytest tests/ -v
+```
+
 ### Testare le modifiche
 
 ```bash
-# Verifica hooks format
-python3 -c "import json; print(json.load(open('src/hooks/hooks.json')))"
-
-# Test database
+# Verifica database
 python3 -c "
 import sys; sys.path.insert(0, 'src')
-from lib.db import ensure_initialized, get_db
+from lib.db import ensure_initialized, get_stats
 ensure_initialized()
-print('DB OK')
+print(get_stats())
 "
+
+# Test migrazioni
+python3 src/lib/migrations.py
 ```
 
 ### Dopo modifiche
 
-1. Aggiorna `hooks.json` se cambi la struttura hooks
+1. Aggiorna `schema.sql` e `migrations.py` se cambi lo schema
 2. Aggiorna `install.sh` se cambi i path
 3. Ri-esegui `./install.sh` per applicare
-4. Riavvia Claude Code per attivare i nuovi hooks
+4. Riavvia Claude Code per attivare i nuovi hook
+5. Esegui `pytest tests/` per verificare che tutto funzioni

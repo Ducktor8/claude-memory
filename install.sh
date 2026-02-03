@@ -66,10 +66,12 @@ echo -n "Creating skill symlinks... "
 ln -sf "$MEMORY_DIR/skills/context-manager" "$SKILLS_DIR/context-manager" 2>/dev/null || true
 
 # Create sub-command skill directories
-for cmd in create forget list remember search status switch; do
+for cmd in create forget list remember search status switch map export import errors; do
     skill_dir="$SKILLS_DIR/context-manager:$cmd"
     mkdir -p "$skill_dir"
-    cp "$MEMORY_DIR/skills/context-manager/commands/$cmd.md" "$skill_dir/SKILL.md"
+    if [[ -f "$MEMORY_DIR/skills/context-manager/commands/$cmd.md" ]]; then
+        cp "$MEMORY_DIR/skills/context-manager/commands/$cmd.md" "$skill_dir/SKILL.md"
+    fi
 done
 echo -e "${GREEN}OK${NC}"
 
@@ -80,7 +82,7 @@ if [[ -f "$SETTINGS_FILE" ]]; then
     cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
 fi
 
-# Create or merge settings
+# Create or merge settings (append to existing hooks, don't overwrite)
 python3 << 'PYTHON_SCRIPT'
 import json
 import os
@@ -99,35 +101,66 @@ else:
 if 'hooks' not in settings:
     settings['hooks'] = {}
 
-# Define our hooks (new format: PostToolUse uses matcher, others don't)
-our_hooks = {
-    "UserPromptSubmit": [{
+# Our hook commands (to identify and avoid duplicates)
+OUR_HOOK_MARKER = f"{memory_dir}/src/hooks/"
+
+def is_our_hook(hook_entry):
+    """Check if a hook entry is one of ours."""
+    if isinstance(hook_entry, dict):
+        hooks_list = hook_entry.get('hooks', [])
+        for h in hooks_list:
+            cmd = h.get('command', '')
+            if OUR_HOOK_MARKER in cmd:
+                return True
+    return False
+
+def append_hook(existing_list, new_hook):
+    """Append a hook to existing list, avoiding duplicates."""
+    # Remove any existing hooks from us (to update them)
+    filtered = [h for h in existing_list if not is_our_hook(h)]
+    # Add our new hook
+    filtered.append(new_hook)
+    return filtered
+
+# Define our hooks
+our_hook_entries = {
+    "UserPromptSubmit": {
         "hooks": [{
             "type": "command",
             "command": f"python3 {memory_dir}/src/hooks/PrePromptSubmit.py"
         }]
-    }],
-    "PostToolUse": [{
+    },
+    "PostToolUse": {
         "matcher": "*",
         "hooks": [{
             "type": "command",
             "command": f"python3 {memory_dir}/src/hooks/PostToolUse.py"
         }]
-    }],
-    "Stop": [{
+    },
+    "Stop": {
         "hooks": [{
             "type": "command",
             "command": f"python3 {memory_dir}/src/hooks/Stop.py"
         }]
-    }]
+    }
 }
 
-# Merge hooks (our hooks take precedence for these events)
-settings['hooks'].update(our_hooks)
+# Merge: append our hooks to existing ones
+for event_type, our_hook in our_hook_entries.items():
+    existing = settings['hooks'].get(event_type, [])
+
+    # Ensure existing is a list
+    if not isinstance(existing, list):
+        existing = [existing] if existing else []
+
+    # Append our hook (replacing any previous version)
+    settings['hooks'][event_type] = append_hook(existing, our_hook)
 
 # Write settings
 with open(settings_file, 'w') as f:
     json.dump(settings, f, indent=2)
+
+print(f"Hooks configured (preserved {sum(len(v) - 1 for v in settings['hooks'].values() if isinstance(v, list))} existing hooks)")
 PYTHON_SCRIPT
 echo -e "${GREEN}OK${NC}"
 

@@ -3,48 +3,57 @@
 Claude Memory System - PostToolUse Hook
 
 This hook runs AFTER Claude uses a tool.
-Tracks file modifications for subsequent extraction.
+Tracks file modifications and tool usage for memory extraction.
 
 Input: JSON with tool usage information (stdin)
-Output: None (writes to temporary file)
+Output: None (writes to session log)
 """
 
 import sys
 import os
 import json
+import re
+import traceback
 from datetime import datetime
+from pathlib import Path
 
 # Add path for import
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Files for tracking modifications
+# Files for tracking
 DIRTY_FILES_PATH = os.path.expanduser("~/.claude/memory/.dirty_files")
 SESSION_LOG_PATH = os.path.expanduser("~/.claude/memory/.session_log")
 
 
 def ensure_dirs():
-    """Ensures that directories exist."""
+    """Ensures tracking directories exist."""
     os.makedirs(os.path.dirname(DIRTY_FILES_PATH), exist_ok=True)
 
 
 def log_tool_use(tool_name: str, tool_input: dict, tool_output: str = ""):
-    """Logs tool usage."""
+    """Logs tool usage to session log."""
     ensure_dirs()
+
+    # Extract relevant output (truncate for storage)
+    output_preview = ""
+    if tool_output:
+        # Remove ANSI codes
+        clean_output = re.sub(r'\x1b\[[0-9;]*m', '', tool_output)
+        output_preview = clean_output[:1000]
 
     entry = {
         'timestamp': datetime.now().isoformat(),
         'tool': tool_name,
         'input': tool_input,
-        'output_preview': tool_output[:500] if tool_output else ""
+        'output_preview': output_preview
     }
 
-    # Append to session log
     with open(SESSION_LOG_PATH, 'a') as f:
         f.write(json.dumps(entry) + '\n')
 
 
 def track_file_modification(file_path: str, operation: str):
-    """Tracks a file modification."""
+    """Tracks a file modification for extraction trigger."""
     ensure_dirs()
 
     entry = {
@@ -58,15 +67,9 @@ def track_file_modification(file_path: str, operation: str):
 
 
 def parse_bash_for_file_ops(command: str) -> list[tuple[str, str]]:
-    """
-    Parses a bash command for file operations.
-
-    Returns:
-        List of tuples (file_path, operation)
-    """
+    """Parses bash commands for file operations."""
     operations = []
 
-    # Patterns for file modification commands
     patterns = [
         (r'rm\s+(?:-[rf]+\s+)?([^\s|&;]+)', 'delete'),
         (r'mv\s+([^\s]+)\s+([^\s|&;]+)', 'move'),
@@ -77,25 +80,45 @@ def parse_bash_for_file_ops(command: str) -> list[tuple[str, str]]:
         (r'touch\s+([^\s|&;]+)', 'create'),
         (r'>\s*([^\s|&;]+)', 'write'),
         (r'>>\s*([^\s|&;]+)', 'append'),
+        (r'npm\s+install', 'npm_install'),
+        (r'pip\s+install', 'pip_install'),
+        (r'git\s+init', 'git_init'),
+        (r'git\s+clone', 'git_clone'),
+        (r'docker\s+build', 'docker_build'),
+        (r'docker-compose\s+up', 'docker_up'),
     ]
 
-    import re
     for pattern, op in patterns:
         matches = re.findall(pattern, command)
         for match in matches:
             if isinstance(match, tuple):
-                # mv/cp have source and dest
-                operations.append((match[-1], op))  # Track destination
-            else:
+                operations.append((match[-1], op))
+            elif isinstance(match, str) and match:
                 operations.append((match, op))
+            else:
+                operations.append(('', op))
 
     return operations
+
+
+def log_error(hook: str, error: Exception):
+    """Logs error to database if possible."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from lib.db import ensure_initialized, get_db
+        ensure_initialized()
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO error_log (hook, error_type, error_message, stack_trace)
+                VALUES (?, ?, ?, ?)
+            """, (hook, type(error).__name__, str(error), traceback.format_exc()))
+    except Exception:
+        pass
 
 
 def main():
     """Hook entry point."""
     try:
-        # Read JSON input from stdin
         input_data = sys.stdin.read().strip()
 
         if not input_data:
@@ -113,7 +136,7 @@ def main():
         # Log the tool use
         log_tool_use(tool_name, tool_input, tool_output)
 
-        # Track tool-specific modifications
+        # Track modifications by tool type
         if tool_name == 'Edit':
             file_path = tool_input.get('file_path', '')
             if file_path:
@@ -129,7 +152,11 @@ def main():
             if command:
                 file_ops = parse_bash_for_file_ops(command)
                 for file_path, operation in file_ops:
-                    track_file_modification(file_path, operation)
+                    if file_path:
+                        track_file_modification(file_path, operation)
+                    else:
+                        # Track operation without specific file
+                        track_file_modification(f"[{operation}]", operation)
 
         elif tool_name == 'NotebookEdit':
             notebook_path = tool_input.get('notebook_path', '')
@@ -137,10 +164,8 @@ def main():
                 track_file_modification(notebook_path, 'notebook_edit')
 
     except Exception as e:
-        # Never block for hook errors
-        import traceback
+        log_error("PostToolUse", e)
         sys.stderr.write(f"[claude-memory] PostToolUse error: {e}\n")
-        sys.stderr.write(traceback.format_exc())
 
 
 if __name__ == "__main__":

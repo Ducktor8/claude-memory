@@ -1,8 +1,20 @@
 -- Claude Memory System - Database Schema
 -- SQLite + FTS5 Full-Text Search
+-- Schema Version: 2
 
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
+
+-- Schema versioning
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    description TEXT
+);
+
+-- Insert current version
+INSERT OR IGNORE INTO schema_version (version, description) VALUES
+    (2, 'Added content_hash for deduplication, error_log table, schema versioning');
 
 -- Memory contexts
 CREATE TABLE IF NOT EXISTS contexts (
@@ -20,6 +32,7 @@ CREATE TABLE IF NOT EXISTS memories (
     context TEXT NOT NULL REFERENCES contexts(name) ON DELETE CASCADE,
     type TEXT CHECK(type IN ('decision', 'error_fix', 'pattern', 'preference', 'note')),
     content TEXT NOT NULL,
+    content_hash TEXT,                       -- MD5 hash for deduplication
     summary TEXT,                            -- 1-2 lines for search
     keywords TEXT,                           -- CSV: "docker,container,deploy"
     source_session TEXT,                     -- Claude session ID
@@ -29,6 +42,9 @@ CREATE TABLE IF NOT EXISTS memories (
     last_accessed TIMESTAMP,
     access_count INTEGER DEFAULT 0
 );
+
+-- Index for deduplication
+CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(content_hash);
 
 -- Full-Text Search Index (FTS5)
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
@@ -105,3 +121,18 @@ INSERT OR IGNORE INTO directory_mappings (pattern, context, priority) VALUES
     ('~/.config/*', 'local', 80),
     ('~/.*', 'local', 50),
     ('~/', 'local', 1);  -- Lowest fallback
+
+-- Error log for debugging
+CREATE TABLE IF NOT EXISTS error_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    hook TEXT,                               -- Which hook generated the error
+    error_type TEXT,                         -- Exception type
+    error_message TEXT,                      -- Error message
+    stack_trace TEXT,                        -- Full stack trace
+    context TEXT,                            -- Context at time of error
+    resolved INTEGER DEFAULT 0               -- Whether error was acknowledged
+);
+
+CREATE INDEX IF NOT EXISTS idx_error_log_timestamp ON error_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_error_log_resolved ON error_log(resolved);

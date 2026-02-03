@@ -1,13 +1,12 @@
 # Claude Memory System - Requirements
-# All dependencies are Python stdlib, listed for documentation
 
-# No external dependencies required
-# Python 3.10+ with:
-# - sqlite3 (FTS5 support)
-# - json
-# - re
-# - os
-# - sys
-# - datetime
-# - fnmatch
-# - pathlib
+# Core: No external dependencies (Python stdlib only)
+# Python 3.10+ with sqlite3 (FTS5 support)
+
+# Development dependencies (optional):
+pytest>=7.0.0      # Testing framework
+pytest-cov>=4.0.0  # Coverage reporting
+
+# To run tests:
+#   pip install pytest pytest-cov
+#   pytest tests/ -v

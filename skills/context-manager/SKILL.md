@@ -13,6 +13,10 @@ commands:
   - search: Search in memories
   - forget: Remove a memory
   - remember: Force saving a memory
+  - map: Manage directory to context mappings
+  - export: Export memories to JSON backup
+  - import: Import memories from JSON backup
+  - errors: View system error log
 ---
 
 # Context Manager
@@ -40,13 +44,18 @@ Multi-context persistent memory system for Claude Code.
 | `/context-manager:search <query>` | Search in memories |
 | `/context-manager:forget <id>` | Remove a memory |
 | `/context-manager:remember` | Force saving a memory |
+| `/context-manager:map` | Manage directory to context mappings |
+| `/context-manager:export` | Export memories to JSON backup file |
+| `/context-manager:import <file>` | Import memories from JSON backup |
+| `/context-manager:errors` | View recent system errors |
 
 ## How It Works
 
 1. **Auto-Detection**: Context is detected from the current directory
 2. **Injection**: At the beginning of each prompt, relevant memories are injected
-3. **Extraction**: At the end of turns, new memories are automatically extracted
-4. **Search**: FTS5 full-text search to find past memories
+3. **Auto-Save**: Memories are automatically extracted and saved after tool use
+4. **Deduplication**: Duplicate memories are detected and skipped
+5. **Search**: FTS5 full-text search to find past memories
 
 ## Memory Types
 
@@ -56,13 +65,30 @@ Multi-context persistent memory system for Claude Code.
 - `preference` - User preferences
 - `note` - General notes
 
+## Auto-Save Triggers
+
+Memories are automatically saved when:
+- Configuration files are edited (package.json, tsconfig.json, etc.)
+- Packages are installed (npm, pip, etc.)
+- Git operations are performed
+- Errors are resolved
+- Code patterns are created
+
 ## Inheritance
 
 Contexts can have a "parent":
 - `crypto-bot` with parent `trading` loads: `global` -> `trading` -> `crypto-bot`
 
+## Backup and Restore
+
+```
+/context-manager:export              # Export all memories
+/context-manager:export --context work  # Export only work context
+/context-manager:import backup.json  # Import from backup
+```
+
 ## Configuration Files
 
 - Database: `~/.claude/memory/memory.db`
 - Contexts: `~/.claude/memory/contexts/*.md`
-- Config: `~/.claude/memory/config.json`
+- Session log: `~/.claude/memory/.session_log`
